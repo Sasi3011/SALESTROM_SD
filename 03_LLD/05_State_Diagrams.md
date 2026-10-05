@@ -2,6 +2,10 @@
 
 ## Reservation lifecycle (Challenge B)
 
+![State diagram: reservation lifecycle](uml/05_state_reservation.svg)
+
+<sub>PlantUML source: [`uml/05_state_reservation.puml`](uml/05_state_reservation.puml) · [PNG](uml/05_state_reservation.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 stateDiagram-v2
     [*] --> AVAILABLE
@@ -28,6 +32,10 @@ stateDiagram-v2
 **Design rule:** the sweeper expires only `RESERVED`, never `PAYMENT_PENDING`. Once money may be moving, the payment reconciler owns the outcome. This removes the "customer paid one second after expiry" race completely.
 
 ## Order lifecycle (Challenge D)
+
+![State diagram: order lifecycle](uml/06_state_order.svg)
+
+<sub>PlantUML source: [`uml/06_state_order.puml`](uml/06_state_order.puml) · [PNG](uml/06_state_order.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
 
 ```mermaid
 stateDiagram-v2

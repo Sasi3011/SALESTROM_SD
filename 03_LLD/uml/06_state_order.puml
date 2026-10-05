@@ -1,0 +1,65 @@
+@startuml 06_state_order
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title State Diagram — Order Lifecycle
+hide empty description
+[*] --> CREATED : CheckoutStarted
+CREATED --> PAYMENT_PENDING
+CREATED --> CANCELLED
+PAYMENT_PENDING --> CONFIRMED : PaymentSucceeded
+PAYMENT_PENDING --> CANCELLED : PaymentFailed
+CONFIRMED --> PROCESSING : fulfilment accepted
+CONFIRMED --> CANCELLED : cannot fulfil\n/ refund (compensation)
+PROCESSING --> SHIPPED : courier pickup
+SHIPPED --> OUT_FOR_DELIVERY
+OUT_FOR_DELIVERY --> DELIVERED
+DELIVERED --> [*]
+CANCELLED --> [*]
+note bottom of CONFIRMED
+  Any transition not in ORDER_TRANSITIONS
+  throws IllegalTransitionError, so duplicate
+  or out-of-order events cannot corrupt state.
+end note
+
+@enduml

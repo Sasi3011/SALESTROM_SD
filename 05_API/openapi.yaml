@@ -1,0 +1,594 @@
+openapi: 3.0.3
+info:
+  title: SALESTORM Flash-Sale API
+  version: 1.0.0
+  description: |
+    Public REST contract for the SALESTORM flash-sale platform (Team NullPointer).
+    Machine-readable form of `API_and_Event_Specification.md`; that document is the source of truth
+    for events, consumer rules and design rationale.
+
+    * JSON over HTTPS (TLS 1.2+). Errors use RFC 7807 `application/problem+json`.
+    * Every write that could create a business transaction requires `Idempotency-Key`
+      (UUID v4, generated once per user intent and reused on every retry of that intent).
+      Same key + same body replays the original response with `Idempotent-Replayed: true`;
+      same key + different body returns `422 IDEMPOTENCY_KEY_REUSED`. Keys are kept 24 h.
+    * Rate limits per user, per IP and global per endpoint. Exceeded → `429` with `Retry-After`.
+    * `traceparent` (W3C) is accepted and propagated; `X-Request-Id` is returned on every response.
+    * Client timeouts: reserve 2 s, pay 10 s. On timeout, retry with the **same** idempotency key.
+servers:
+  - url: https://api.salestorm.example/api/v1
+    description: Production
+  - url: http://localhost:4000/api/v1
+    description: Prototype sandbox (any bearer token; customer taken from X-Customer-Id)
+tags:
+  - name: Product discovery
+  - name: Cart
+  - name: Reservation
+  - name: Payment
+  - name: Orders and delivery
+  - name: Admin
+security:
+  - bearerAuth: []
+
+paths:
+  /products/{productId}:
+    get:
+      tags: [Product discovery]
+      summary: Product details (CDN-cached 60 s)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Product
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /sales/{saleId}:
+    get:
+      tags: [Product discovery]
+      summary: Sale status and stock badge from Redis (cached 1 s)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/SaleId'
+      responses:
+        '200':
+          description: Sale status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaleStatus' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /carts/me/items:
+    post:
+      tags: [Cart]
+      summary: Add an item to my cart (does not hold stock)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LineItemRequest' }
+      responses:
+        '201': { description: Item added }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409':
+          description: '`LIMIT_EXCEEDED`: per-customer limit for this sale reached'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /carts/me/items/{productId}:
+    delete:
+      tags: [Cart]
+      summary: Remove an item from my cart
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /sales/{saleId}/reservations:
+    post:
+      tags: [Reservation]
+      summary: Reserve one unit (hot path)
+      description: |
+        Admission order: gateway (JWT, validation, token bucket) → idempotency guard → per-customer limit →
+        Redis stock gate → inventory database guard
+        `UPDATE inventory SET available = available - 1, reserved = reserved + 1 WHERE available >= 1`.
+        The database guard is the only consistency point; Redis is a filter.
+      parameters:
+        - $ref: '#/components/parameters/SaleId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LineItemRequest' }
+            example: { productId: PRODUCT_X, quantity: 1 }
+      responses:
+        '201':
+          description: '`RESERVED`: unit held. Go to payment before `expiresAt`.'
+          headers:
+            X-Request-Id: { $ref: '#/components/headers/X-Request-Id' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '200':
+          description: '`RESERVED` (replay): duplicate of an earlier successful request with the same key'
+          headers:
+            Idempotent-Replayed: { $ref: '#/components/headers/Idempotent-Replayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409':
+          description: |
+            `SOLD_OUT` (no units; show sold out), `LIMIT_EXCEEDED` (customer already holds an active
+            reservation) or `SALE_NOT_LIVE` (before start / after end).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              examples:
+                soldOut:
+                  value:
+                    type: https://api.salestorm.example/errors/sold-out
+                    title: Sold out
+                    status: 409
+                    code: SOLD_OUT
+                    detail: No units of PRODUCT_X are available in sale S1.
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '422': { $ref: '#/components/responses/IdempotencyKeyReused' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: '`TEMPORARILY_UNAVAILABLE`: database failover in progress. Retry with the same key.'
+          headers:
+            Retry-After: { $ref: '#/components/headers/Retry-After' }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /reservations/{reservationId}:
+    get:
+      tags: [Reservation]
+      summary: Reservation status and expiry (owner only)
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '200':
+          description: Reservation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Reservation]
+      summary: Cancel my hold (unit is released)
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '204': { description: Released }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Payment already started; the hold can no longer be cancelled
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /checkout/payments:
+    post:
+      tags: [Payment]
+      summary: Pay for a reservation
+      description: |
+        Moves the hold to PAYMENT_PENDING only if `expires_at > now()`, then charges the PSP through a
+        circuit breaker with idempotency key `pay_{reservationId}`. A gateway timeout is recorded as UNKNOWN
+        and resolved by the reconciler; it is never retried blindly.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentRequest' }
+      responses:
+        '200':
+          description: '`PAID`: payment captured; the order is confirmed asynchronously. Poll the order.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '202':
+          description: '`PAYMENT_PROCESSING`: gateway timed out, reconciliation running. Poll `GET /payments/{paymentId}`; do not pay again.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '402':
+          description: '`PAYMENT_FAILED`: declined. The unit is released.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410':
+          description: '`RESERVATION_EXPIRED`: hold timed out before payment started'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/IdempotencyKeyReused' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: '`PAYMENT_UNAVAILABLE`: PSP circuit open, hold still valid. Retry with the same key.'
+          headers:
+            Retry-After: { $ref: '#/components/headers/Retry-After' }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /payments/{paymentId}:
+    get:
+      tags: [Payment]
+      summary: Payment status (owner only)
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema: { type: string, example: pay_7d1e }
+      responses:
+        '200':
+          description: Payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /payments/webhooks/{provider}:
+    post:
+      tags: [Payment]
+      summary: PSP result callback
+      description: Verified by PSP HMAC signature and IP allow-list. Idempotent on the PSP event id. Returns 200 quickly; processing is asynchronous.
+      security:
+        - pspSignature: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, example: cardpsp }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Accepted for processing }
+        '401': { description: Signature invalid }
+
+  /orders/{orderId}:
+    get:
+      tags: [Orders and delivery]
+      summary: Order with status history (owner only)
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /orders:
+    get:
+      tags: [Orders and delivery]
+      summary: My orders (cursor pagination)
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Page of orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Order' }
+                  nextCursor: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /orders/by-reservation/{reservationId}:
+    get:
+      tags: [Orders and delivery]
+      summary: Find the order created asynchronously for a reservation
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '200':
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { description: Not created yet (keep polling) or not owned }
+
+  /orders/{orderId}/cancel:
+    post:
+      tags: [Orders and delivery]
+      summary: Cancel before SHIPPED (triggers refund)
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { description: Cancellation accepted; OrderCancelled → refund }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409':
+          description: Order already shipped
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /shipments/{shipmentId}/tracking:
+    get:
+      tags: [Orders and delivery]
+      summary: Courier tracking events (owner only)
+      parameters:
+        - name: shipmentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Tracking events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    status: { type: string, enum: [SHIPPED, OUT_FOR_DELIVERY, DELIVERED] }
+                    at: { type: string, format: date-time }
+                    location: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /admin/sales:
+    post:
+      tags: [Admin]
+      summary: Create a sale (admin role + MFA)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaleCreate' }
+      responses:
+        '201': { description: Sale created }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: 'Not an admin, or MFA missing' }
+
+  /admin/sales/{saleId}/inventory:
+    put:
+      tags: [Admin]
+      summary: Set stock before sale start only; seeds the Redis gate from the database
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SaleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, stock]
+              properties:
+                productId: { type: string }
+                stock: { type: integer, minimum: 0 }
+      responses:
+        '200': { description: Stock set }
+        '403': { description: Not an admin }
+        '409': { description: Sale already started }
+
+  /admin/sales/{saleId}/metrics:
+    get:
+      tags: [Admin]
+      summary: Live sale counters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SaleId'
+      responses:
+        '200':
+          description: Counters
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: { type: integer } }
+        '403': { description: Not an admin }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OIDC access token. Gateway validates signature, expiry and audience; customer_id comes from `sub`, never from the body. `/admin/*` endpoints additionally require the `admin` role claim (and MFA to create a sale).
+    pspSignature:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: HMAC of the request body with the PSP webhook secret.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID v4, generated once per user intent and reused on every retry of that intent.
+      schema: { type: string, format: uuid }
+    SaleId:
+      name: saleId
+      in: path
+      required: true
+      schema: { type: string, example: S1 }
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, example: PRODUCT_X }
+    ReservationId:
+      name: reservationId
+      in: path
+      required: true
+      schema: { type: string, example: rsv_8f2c }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string }
+
+  headers:
+    Retry-After:
+      description: Seconds to wait before retrying with the same idempotency key
+      schema: { type: integer }
+    Idempotent-Replayed:
+      description: '`true` when the response is a replay of an earlier request with the same key'
+      schema: { type: string, enum: ['true'] }
+    X-Request-Id:
+      description: Request id for support and log correlation
+      schema: { type: string }
+
+  responses:
+    NotFound:
+      description: '`NOT_FOUND`: resource does not exist or is not owned by the caller'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: '`UNAUTHENTICATED`: missing or invalid token'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ValidationFailed:
+      description: '`VALIDATION_FAILED`: bad body (for example quantity ≠ 1)'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    IdempotencyKeyReused:
+      description: '`IDEMPOTENCY_KEY_REUSED`: same key sent with a different body'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RateLimited:
+      description: '`RATE_LIMITED`: throttled. Retry after `Retry-After` with the same key.'
+      headers:
+        Retry-After: { $ref: '#/components/headers/Retry-After' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 7807 problem details
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        code:
+          type: string
+          example: SOLD_OUT
+          enum: [VALIDATION_FAILED, UNAUTHENTICATED, NOT_FOUND, SOLD_OUT, LIMIT_EXCEEDED, SALE_NOT_LIVE,
+                 IDEMPOTENCY_KEY_REUSED, RATE_LIMITED, TEMPORARILY_UNAVAILABLE, PAYMENT_FAILED,
+                 RESERVATION_EXPIRED, PAYMENT_UNAVAILABLE]
+        detail: { type: string }
+        traceId: { type: string }
+    Product:
+      type: object
+      properties:
+        productId: { type: string }
+        name: { type: string }
+        categoryId: { type: string }
+        priceMinor: { type: integer, description: Price in paise }
+        currency: { type: string, example: INR }
+    SaleStatus:
+      type: object
+      properties:
+        saleId: { type: string }
+        status: { type: string, enum: [SCHEDULED, LIVE, ENDED] }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        stockBadge: { type: string, enum: [AVAILABLE, FEW_LEFT, SOLD_OUT] }
+    SaleCreate:
+      type: object
+      required: [productId, startsAt, endsAt, stock, perCustomerLimit]
+      properties:
+        productId: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        stock: { type: integer, minimum: 1 }
+        perCustomerLimit: { type: integer, minimum: 1, example: 1 }
+        pricingStrategy: { type: string, example: FIXED }
+    LineItemRequest:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: { type: string, example: PRODUCT_X }
+        quantity: { type: integer, enum: [1], description: Flash sale allows exactly one unit per request }
+    ReservationStatus:
+      type: string
+      enum: [RESERVED, PAYMENT_PENDING, CONFIRMED, SOLD, RELEASED]
+    Reservation:
+      type: object
+      properties:
+        reservationId: { type: string, example: rsv_8f2c }
+        status: { $ref: '#/components/schemas/ReservationStatus' }
+        expiresAt: { type: string, format: date-time }
+        replayed: { type: boolean, description: True when this is an idempotent replay }
+    PaymentRequest:
+      type: object
+      required: [reservationId, paymentMethod, pspToken]
+      properties:
+        reservationId: { type: string }
+        paymentMethod: { type: string, enum: [card, upi, wallet] }
+        pspToken: { type: string, description: Tokenised by the PSP on the client; raw card data never reaches SALESTORM }
+        couponCode: { type: string, nullable: true }
+    Payment:
+      type: object
+      properties:
+        paymentId: { type: string }
+        reservationId: { type: string }
+        status: { type: string, enum: [INITIATED, SUCCEEDED, FAILED, UNKNOWN] }
+        amountMinor: { type: integer }
+        currency: { type: string, example: INR }
+        transactionId: { type: string, nullable: true }
+    OrderStatus:
+      type: string
+      enum: [CREATED, PAYMENT_PENDING, CONFIRMED, PROCESSING, SHIPPED, OUT_FOR_DELIVERY, DELIVERED, CANCELLED]
+    Order:
+      type: object
+      properties:
+        orderId: { type: string }
+        reservationId: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              status: { $ref: '#/components/schemas/OrderStatus' }
+              at: { type: string, format: date-time }
+        shipmentId: { type: string, nullable: true }

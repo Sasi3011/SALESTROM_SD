@@ -1,0 +1,103 @@
+@startuml 03_sequence_payment
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title Sequence — Payment (success, decline, timeout, circuit open)
+autonumber
+actor Customer as C
+participant "Checkout\n<<Facade>>" as CK
+participant "Inventory\nservice" as INV
+participant "Payment\nservice" as PAY
+participant "Circuit\nbreaker" as CB
+participant "External PSP" as PSP
+queue "Outbox → Kafka" as K
+
+C -> CK : POST /checkout/payments {reservationId}\nIdempotency-Key: p1
+CK -> CK : idempotency check p1\n(duplicate Pay waits / replays)
+CK -> INV : startPayment(reservationId)
+note right of INV
+  UPDATE reservation SET status = 'PAYMENT_PENDING'
+  WHERE id = ? AND status = 'RESERVED' AND expires_at > now()
+end note
+alt hold expired or not owned
+  INV --> CK : false
+  CK --> C : 410 RESERVATION_EXPIRED
+end
+CK -> K : CheckoutStarted (order draft)
+CK -> PAY : charge(reservationId)
+PAY -> PAY : INSERT payment\nidempotency_key = pay_{reservationId} (UNIQUE)
+PAY -> CB : call()
+alt circuit OPEN
+  CB --> PAY : fail fast (PSP not called)
+  PAY --> CK : UNAVAILABLE
+  CK -> INV : resumeHold (back to RESERVED)
+  CK --> C : 503 PAYMENT_UNAVAILABLE, Retry-After: 2
+else circuit CLOSED / HALF_OPEN
+  CB -> PSP : POST /charges\nIdempotency-Key: pay_{reservationId} (timeout 3 s)
+  alt approved
+    PSP --> PAY : SUCCEEDED (txn_123)
+    PAY -> K : same TX: payment = SUCCEEDED\n+ PaymentSucceeded
+    CK --> C : 200 PAID, order confirming
+  else declined
+    PSP --> PAY : FAILED (card_declined)
+    PAY -> K : same TX: payment = FAILED\n+ PaymentFailed
+    CK --> C : 402 PAYMENT_FAILED
+  else timeout / connection reset
+    PAY -> PAY : status = UNKNOWN (never guess)
+    CK --> C : 202 PAYMENT_PROCESSING
+    loop reconciler, every 30 s
+      PAY -> PSP : GET /charges?idempotency_key=pay_{reservationId}
+      alt PSP has a record
+        PSP --> PAY : SUCCEEDED or FAILED
+        PAY -> K : record result + event
+      else PSP has no record
+        PAY -> PSP : retry charge with the SAME key (safe)
+      end
+    end
+  end
+end
+== asynchronous consumers (idempotent) ==
+K -> INV : PaymentSucceeded → CONFIRMED\nreserved - 1, sold + 1
+K -> INV : PaymentFailed → PAYMENT_FAILED → RELEASED\navailable + 1, gate token + 1
+
+@enduml

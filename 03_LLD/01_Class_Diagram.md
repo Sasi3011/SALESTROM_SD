@@ -2,6 +2,10 @@
 
 These classes exist in the prototype (`11_AI_Assisted_Validation/prototype/backend/src`). Names match the code so the jury can open any class.
 
+![Class diagram: inventory, payment, order](uml/01_class_diagram.svg)
+
+<sub>PlantUML source: [`uml/01_class_diagram.puml`](uml/01_class_diagram.puml) · [PNG](uml/01_class_diagram.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 classDiagram
     direction LR

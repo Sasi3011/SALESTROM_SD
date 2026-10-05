@@ -1,0 +1,106 @@
+@startuml 04_component_payment_order
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title Component Diagram — Payment and Order Services
+left to right direction
+
+component "Checkout Service\n<<Facade>>" as CHK
+cloud "External PSP" as PSP
+database "Payment DB" as PDB
+database "Order DB" as ODB
+queue "Kafka" as K
+
+package "Payment Service" {
+  component "PaymentController" as PC
+  component "PaymentService" as PS
+  component "PaymentRepository\nUNIQUE idempotency_key" as PREPO
+  component "CircuitBreaker" as CB
+  interface "PaymentGateway" as PGI
+  component "CardPspAdapter\n<<Adapter>>" as A1
+  component "UpiPspAdapter\n<<Adapter>>" as A2
+  component "PaymentProviderFactory\n<<Factory>>" as PF
+  component "WebhookController\nHMAC check" as WH
+  component "PaymentReconciler" as REC
+  component "OutboxWriter" as POB
+}
+
+package "Order Service" {
+  component "OrderEventConsumer\nordered by reservationId" as OEC
+  component "OrderService" as OS
+  component "OrderStateMachine\n<<State>>" as OSM
+  component "OrderRepository\nUNIQUE reservation_id" as OREPO
+  component "OrderQueryController" as OQ
+  component "DLQ replay job" as DLQ
+  component "OutboxWriter" as OOB
+}
+
+CHK --> PC : charge(reservationId)
+PC --> PS
+PS --> PREPO
+PS --> CB
+CB --> PGI
+A1 ..|> PGI
+A2 ..|> PGI
+PF ..> A1 : creates
+PF ..> A2 : creates
+A1 ..> PSP
+A2 ..> PSP
+PSP ..> WH : webhook
+WH --> PS
+REC --> PS : resolve UNKNOWN
+PS --> POB
+PREPO ..> PDB
+POB ..> PDB
+PDB ..> K : CDC
+K --> OEC
+DLQ --> OEC
+OEC --> OS
+OS --> OSM
+OS --> OREPO
+OS --> OOB
+OQ --> OREPO
+OREPO ..> ODB
+OOB ..> ODB
+
+@enduml

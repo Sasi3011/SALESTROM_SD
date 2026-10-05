@@ -1,0 +1,105 @@
+@startuml 05_deployment_diagram
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title Deployment Diagram — single region, 3 availability zones
+
+node "Global CDN + WAF\n(edge PoPs)" as CDN
+node "Regional L7 load balancer" as LB
+cloud "PSP" as PSP
+
+node "Kubernetes cluster (spread across AZ-a, AZ-b, AZ-c)" as K8S {
+  node "namespace: edge" {
+    artifact "api-gateway\n6 → 60 pods (HPA)" as GW
+  }
+  node "namespace: core" {
+    artifact "checkout\n4 → 40 pods" as CHK
+    artifact "inventory\n4 → 20 pods" as INV
+    artifact "payment\n3 → 12 pods" as PAY
+    artifact "order\n3 → 12 pods" as ORD
+    artifact "catalog, cart, sale,\nfulfilment, notification" as OTH
+    artifact "reconciler CronJobs" as REC
+  }
+  node "namespace: observability" {
+    artifact "OTel collector, Prometheus,\nGrafana, Loki, Alertmanager" as OBS
+  }
+}
+
+node "AZ-a" {
+  database "PostgreSQL primary\n(inventory / payment / order)" as PGP
+  database "Redis shard primary" as RA
+  queue "Kafka broker 1" as K1
+}
+node "AZ-b" {
+  database "PostgreSQL sync standby" as PGS
+  database "Redis replica" as RB
+  queue "Kafka broker 2" as K2
+}
+node "AZ-c" {
+  database "PostgreSQL async read replica" as PGR
+  database "Redis replica" as RC
+  queue "Kafka broker 3" as K3
+}
+node "Secrets manager / KMS" as V
+
+CDN --> LB : HTTPS
+LB --> GW : HTTPS
+GW --> CHK : mTLS
+GW --> ORD
+GW --> OTH
+CHK --> INV : gRPC
+CHK --> PAY : gRPC
+INV --> PGP : SQL
+INV --> RA
+PAY --> PGP
+ORD --> PGP
+PAY --> PSP : HTTPS egress (NAT, allow-listed)
+PGP --> PGS : synchronous replication (RPO 0)
+PGP ..> PGR : async replication
+RA ..> RB
+RA ..> RC
+K1 -- K2
+K2 -- K3
+K8S ..> V : secrets at runtime
+
+@enduml

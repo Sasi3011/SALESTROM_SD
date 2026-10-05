@@ -1,0 +1,100 @@
+@startuml 02_sequence_purchase_reservation
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title Sequence — Purchase & Reservation (Buy now)
+autonumber
+actor Customer as C
+participant "API gateway" as GW
+participant "Checkout\n<<Facade>>" as CK
+participant "Inventory\nservice" as INV
+database "Redis\n(idempotency)" as ID
+database "Redis\n(stock gate)" as G
+database "Inventory DB" as DB
+
+C -> GW : POST /sales/S1/reservations\nIdempotency-Key: k1, JWT
+GW -> GW : verify JWT, validate, token bucket
+alt token bucket empty
+  GW --> C : 429 Too Many Requests\nRetry-After: 1
+end
+GW -> CK : reserve(customer, k1, qty = 1)
+CK -> INV : reserve(...)
+INV -> ID : SET idem:k1 IN_PROGRESS NX EX 86400
+alt key already completed
+  ID --> INV : stored result
+  INV --> C : 200 original result\nIdempotent-Replayed: true
+else key in progress (concurrent duplicate)
+  INV -> INV : wait for first request's result\n(no second reservation)
+end
+INV -> INV : per-customer limit\n(one active hold)
+INV -> G : EVAL decr_if_enough(stock:S1:X, 1)
+alt tokens = 0
+  G --> INV : -1
+  INV --> C : 409 SOLD_OUT\n(database never touched)
+else token acquired
+  G --> INV : remaining tokens
+  group #EAEFFF one database transaction
+    INV -> DB : UPDATE inventory\nSET available = available - 1, reserved = reserved + 1\nWHERE ... AND available >= 1
+    alt 0 rows updated (lost the last-unit race)
+      DB --> INV : 0
+      INV -> DB : ROLLBACK
+      INV -> G : INCRBY stock:S1:X 1 (return token)
+      INV --> C : 409 SOLD_OUT
+    else 1 row updated
+      INV -> DB : INSERT inventory_reservation\n(RESERVED, expires_at = now() + 5 min, k1)
+      INV -> DB : INSERT outbox (ReservationCreated)
+      INV -> DB : COMMIT
+    end
+  end
+  INV -> ID : SET idem:k1 = {201, reservationId}
+  INV --> CK : RESERVED
+  CK --> GW : 201 Created {reservationId, expiresAt}
+  GW --> C : 201 Created
+end
+note over DB
+  Two requests for the last unit serialise on the row lock.
+  The second re-checks "available >= 1" against the committed
+  value, updates 0 rows and gets SOLD_OUT. Exactly one wins.
+end note
+
+@enduml

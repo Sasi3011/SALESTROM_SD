@@ -1,0 +1,86 @@
+@startuml 04_sequence_order_recovery
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title Sequence — Order creation and recovery\n(payment succeeded, Order Service down for 30 s)
+autonumber
+participant "Payment\nservice" as PAY
+database "Payment DB\n(+ outbox)" as PDB
+participant "Outbox relay\n(CDC)" as RL
+queue "Kafka topic\nkey = reservationId" as K
+participant "Order\nservice" as ORD
+database "Order DB" as ODB
+queue "Dead-letter\ntopic" as DLQ
+participant "Reconciler" as REC
+participant "Notification" as N
+
+PAY -> PDB : BEGIN; payment = SUCCEEDED;\nINSERT outbox PaymentSucceeded; COMMIT
+RL -> PDB : read WAL
+RL -> K : publish PaymentSucceeded (acks = all)
+note over ORD #FDECEF : Order Service DOWN (30 s)
+K -> ORD : deliver
+ORD -[#C8334F]x K : 503 — offset NOT committed
+loop backoff 100 ms → 200 ms → … max 5 s (up to 25 attempts)
+  K -> ORD : redeliver same message\n(order per key preserved)
+end
+note over ORD #E6F4EE : Order Service recovered
+K -> ORD : CheckoutStarted, then PaymentSucceeded
+ORD -> ODB : INSERT orders ON CONFLICT (reservation_id) DO NOTHING
+ORD -> ODB : UPDATE orders SET status = 'CONFIRMED'\nWHERE reservation_id = ? AND status = 'PAYMENT_PENDING'
+ORD -> ODB : INSERT outbox OrderConfirmed (same TX)
+ORD -> K : commit offset
+K -> N : OrderConfirmed → email + SMS
+alt retries exhausted (poison message / very long outage)
+  ORD -> DLQ : move message with error
+  REC -> DLQ : replay when Order Service healthy
+end
+alt order cannot be fulfilled
+  ORD -> K : OrderCancelled → Payment refunds (compensation)
+end
+note over PAY, N
+  No paid order is lost: (1) payment + event commit atomically,
+  (2) Kafka retains the event, (3) consumer is idempotent,
+  (4) reconciler alerts on any "paid without order".
+end note
+
+@enduml

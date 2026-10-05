@@ -1,5 +1,7 @@
 # 12. Final Pitch (5 minutes) & Jury Preparation
 
+**Slides:** [`SALESTORM_NullPointer_Pitch.pptx`](SALESTORM_NullPointer_Pitch.pptx) (PDF copy: [`SALESTORM_NullPointer_Pitch.pdf`](SALESTORM_NullPointer_Pitch.pdf)). Slides 2–8 follow the timing below, and each shows its time slot in the top-right corner. Each slide's speaker notes contain the lines to say. Slide 9 is the final jury question, with all 12 steps in its notes.
+
 Suggested speaker split for a team of 3: **A** = System Architect, **B** = LLD & Data, **C** = Reliability. (Team of 4: give section 6 to the fourth member.)
 
 ## Pitch script, timed to the brief
@@ -12,7 +14,7 @@ Suggested speaker split for a team of 3: **A** = System Architect, **B** = LLD &
 | 2:00–3:00 | B | "The exact point where overselling is prevented is one SQL statement: `UPDATE … SET available = available − 1 WHERE available >= 1`. We tested four approaches. Naive sold 2,000 of 100. Pessimistic was correct but took 4.5 seconds. Optimistic was correct but sold only 42 units because customers gave up. Atomic update: exactly 100, 8 ms, and with the gate only 100 database calls." **Live: press Start flash sale.** | Concurrency Lab chart, then Live sale |
 | 3:00–3:45 | C | "Payment uses one key per reservation, at our database and at the gateway, so double clicks and timeouts can't double charge. A timeout is UNKNOWN, never guessed; we ask the gateway. If the Order Service is down after payment, the event waits in Kafka and the order confirms when it recovers. You can see it here." | Tracer: *Paid, then Order Service down* |
 | 3:45–4:30 | B | "Inventory service: a Strategy interface for concurrency control, Factory to choose it, State machine for the reservation lifecycle, Repository for the SQL. Adding a payment provider is one adapter class and one registry line." | Class diagram + state diagram |
-| 4:30–5:00 | C | "At 50× traffic only the edge and gate change; the database still sees about a hundred writes, because load after the gate is bounded by stock. Our prototype, built with AI assistance and validated by 11 tests and live invariants, shows all seven guarantees holding." | Invariants panel all green |
+| 4:30–5:00 | C | "At 50× traffic only the edge and gate change; the database still sees about a hundred writes, because load after the gate is bounded by stock. Our prototype, built with AI assistance and validated by 15 tests and live invariants, shows all eight guarantees holding, even with a gateway pod killed mid-sale." | Invariants panel all green |
 
 ## The final jury question — rehearse this answer word for word
 
@@ -49,5 +51,5 @@ Suggested speaker split for a team of 3: **A** = System Architect, **B** = LLD &
 | What changes at 50×? | Edge, waiting room, gateway pods, possibly gate sharding. DB, payment, order load unchanged: bounded by stock. | Scalability §3 |
 | Database fails mid-sale? | Sync standby promoted in < 30 s; 503 + Retry-After; idempotent retries; re-sync gate from DB. RPO 0. | Scalability §5 |
 | What does your design sacrifice? | Multi-region inventory writes, instant order confirmation, perfect arrival-order fairness, monolith simplicity. | ADR summary |
-| How did you validate AI-generated code? | 11 tests including one that must fail (naive oversells), live invariant checker, trace review against sequence diagrams, failure variants. | Validation report |
+| How did you validate AI-generated code? | 15 tests including one that must fail (naive oversells), live invariant checker, trace review against sequence diagrams, failure variants. | Validation report |
 | Is it fair? | First commit at the database wins. Waiting room gives FIFO admission at the edge; we don't promise strict global order. | Requirements §6 |

@@ -1,0 +1,30 @@
+@startuml 01_system_context
+
+!include <C4/C4_Context>
+LAYOUT_LEFT_RIGHT()
+title SALESTORM — System Context (C4 level 1)
+
+Person(customer, "Customer", "Web / mobile app. Browses, presses Buy now, pays, tracks delivery.")
+Person(admin, "Sale administrator", "Configures sale, stock and per-customer limits.")
+Person(ops, "Operations engineer", "Watches dashboards, handles alerts and dead-letter queues.")
+
+System(salestorm, "SALESTORM platform", "Catalogue, cart, inventory reservation, checkout, payment, orders, fulfilment, notifications.")
+
+System_Ext(cdn, "CDN + WAF", "Edge caching, bot protection, edge rate limit, waiting room.")
+System_Ext(idp, "Identity provider", "OAuth 2.0 / OIDC, issues JWTs.")
+System_Ext(psp, "Payment service provider", "Card / UPI gateway. Idempotency keys, status lookup, webhooks.")
+System_Ext(courier, "Courier partner", "Shipment creation and tracking.")
+System_Ext(notify, "SMS / email provider", "Customer messages.")
+
+Rel(customer, cdn, "Uses", "HTTPS")
+Rel(cdn, salestorm, "Forwards allowed traffic", "HTTPS")
+Rel(admin, salestorm, "Configures sales", "HTTPS + MFA")
+Rel(ops, salestorm, "Operates", "Dashboards")
+Rel(salestorm, idp, "Validates tokens", "JWKS")
+Rel(salestorm, psp, "Charges / checks status", "HTTPS + Idempotency-Key")
+Rel_Back(salestorm, psp, "Signed webhooks")
+Rel(salestorm, courier, "Books shipments", "HTTPS, async")
+Rel(salestorm, notify, "Sends messages", "HTTPS, async")
+SHOW_LEGEND()
+
+@enduml

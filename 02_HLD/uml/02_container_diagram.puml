@@ -1,0 +1,61 @@
+@startuml 02_container_diagram
+
+!include <C4/C4_Container>
+title SALESTORM — Container Diagram (C4 level 2)
+
+Person(customer, "Customer")
+System_Ext(cdn, "CDN + WAF + waiting room")
+System_Ext(psp, "Payment service provider")
+System_Ext(courier, "Courier partner")
+System_Ext(notify, "SMS / email provider")
+
+System_Boundary(s, "SALESTORM") {
+  Container(lb, "Load balancer", "L7, multi-AZ", "Spreads traffic across gateway pods")
+  Container(gw, "API gateway", "Envoy / Kong", "JWT auth, validation, token-bucket rate limit, routing")
+  Container(catalog, "Catalog service", "Spring Boot", "Products, categories (read-heavy)")
+  Container(cart, "Cart service", "Spring Boot", "Carts in Redis")
+  Container(sale, "Sale service", "Spring Boot", "Sale rules, limits, pricing strategy")
+  Container(checkout, "Checkout service", "Spring Boot", "Facade: reserve, start payment. Stateless")
+  Container(inv, "Inventory & reservation service", "Spring Boot", "Owns stock counters and reservation lifecycle. Prevents overselling")
+  Container(pay, "Payment service", "Spring Boot", "Owns payments, PSP adapters, idempotency, reconciliation")
+  Container(order, "Order service", "Spring Boot", "Order lifecycle, event-driven")
+  Container(ful, "Fulfilment & shipment service", "Spring Boot", "Pick-pack, courier booking, tracking")
+  Container(noti, "Notification service", "Spring Boot", "Email / SMS on events")
+  Container(rec, "Reconciliation workers", "K8s CronJobs", "UNKNOWN payments, DLQ replay, gate re-sync")
+
+  ContainerDb(redis, "Redis cluster", "Redis 7", "Stock gate tokens, idempotency keys, rate limits, carts, cache")
+  ContainerDb(invdb, "Inventory DB", "PostgreSQL 16", "inventory, inventory_reservation, outbox")
+  ContainerDb(paydb, "Payment DB", "PostgreSQL 16", "payment, payment_attempt, outbox")
+  ContainerDb(orddb, "Order DB", "PostgreSQL 16", "orders, order_item, shipment, outbox")
+  ContainerQueue(kafka, "Kafka", "3 brokers, RF=3", "Ordered events keyed by reservationId; DLQ topics")
+}
+
+Rel(customer, cdn, "HTTPS")
+Rel(cdn, lb, "HTTPS")
+Rel(lb, gw, "HTTPS")
+Rel(gw, catalog, "REST")
+Rel(gw, cart, "REST")
+Rel(gw, sale, "REST")
+Rel(gw, checkout, "REST")
+Rel(gw, order, "REST (queries)")
+Rel(checkout, inv, "gRPC, sync, 300 ms timeout")
+Rel(checkout, pay, "gRPC, sync, 3 s timeout")
+Rel(inv, redis, "Lua gate, idempotency")
+Rel(inv, invdb, "SQL, conditional UPDATE")
+Rel(pay, paydb, "SQL")
+Rel(pay, psp, "HTTPS + Idempotency-Key")
+Rel(order, orddb, "SQL")
+Rel(invdb, kafka, "Outbox via CDC")
+Rel(paydb, kafka, "Outbox via CDC")
+Rel(orddb, kafka, "Outbox via CDC")
+Rel(kafka, inv, "PaymentSucceeded/Failed, OrderConfirmed")
+Rel(kafka, order, "CheckoutStarted, PaymentSucceeded/Failed")
+Rel(kafka, ful, "OrderConfirmed")
+Rel(kafka, noti, "OrderConfirmed, PaymentFailed, ReservationExpired")
+Rel(ful, courier, "HTTPS")
+Rel(noti, notify, "HTTPS")
+Rel(rec, psp, "Status lookup")
+Rel(rec, kafka, "DLQ replay")
+SHOW_LEGEND()
+
+@enduml

@@ -1,0 +1,88 @@
+@startuml use_case_diagram
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title SALESTORM — Use Case Diagram
+left to right direction
+actor Customer as C
+actor "Sale administrator" as A
+actor "Operations engineer" as O
+actor "Payment service provider" as PSP <<external>>
+actor "Courier partner" as CR <<external>>
+actor "SMS / email provider" as NT <<external>>
+
+rectangle "SALESTORM flash-sale platform" {
+  usecase "Browse products and sale" as UC1
+  usecase "Add item to cart" as UC2
+  usecase "Buy now\n(reserve unit)" as UC3
+  usecase "Check availability" as UC3a
+  usecase "Enforce 1 unit per customer" as UC3b
+  usecase "Pay for reservation" as UC4
+  usecase "Reconcile uncertain payment" as UC4a
+  usecase "Release unit\n(expiry / payment failed)" as UC5
+  usecase "Confirm order" as UC6
+  usecase "Fulfil and ship order" as UC7
+  usecase "Track delivery" as UC8
+  usecase "Notify customer" as UC9
+  usecase "Configure sale, stock, limits" as UC10
+  usecase "Monitor sale, replay DLQ" as UC11
+}
+
+C --> UC1
+C --> UC2
+C --> UC3
+C --> UC4
+C --> UC8
+UC3 .> UC3a : <<include>>
+UC3 .> UC3b : <<include>>
+UC4 --> PSP
+UC4a .> UC4 : <<extend>>
+UC4a --> PSP
+UC5 .> UC3 : <<extend>>
+UC6 .> UC4 : <<extend>>\n(on success)
+UC7 --> CR
+UC9 --> NT
+A --> UC10
+O --> UC11
+
+@enduml

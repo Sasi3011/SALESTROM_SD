@@ -1,5 +1,9 @@
 # 03.3 Sequence — Payment (success, failure, timeout, duplicate, gateway down)
 
+![Sequence diagram: payment](uml/03_sequence_payment.svg)
+
+<sub>PlantUML source: [`uml/03_sequence_payment.puml`](uml/03_sequence_payment.puml) · [PNG](uml/03_sequence_payment.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 sequenceDiagram
     autonumber

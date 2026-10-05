@@ -22,6 +22,12 @@ The business question this design answers: *How can we handle thousands of simul
 | SMS / email provider | External notification channel. |
 | Operations engineer | Watches dashboards, handles alerts and dead-letter queues. |
 
+### Use case diagram
+
+![Use case diagram](uml/use_case_diagram.svg)
+
+<sub>PlantUML source: [`uml/use_case_diagram.puml`](uml/use_case_diagram.puml) · [PNG](uml/use_case_diagram.png). Actors and use cases of the flash sale.</sub>
+
 ## 3. Functional requirements
 
 | ID | Requirement | Pipeline stage |

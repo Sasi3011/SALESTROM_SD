@@ -1,5 +1,9 @@
 # 03.4 Sequence — Order creation and recovery (payment succeeded, Order Service down)
 
+![Sequence diagram: order creation and recovery](uml/04_sequence_order_recovery.svg)
+
+<sub>PlantUML source: [`uml/04_sequence_order_recovery.puml`](uml/04_sequence_order_recovery.puml) · [PNG](uml/04_sequence_order_recovery.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 sequenceDiagram
     autonumber

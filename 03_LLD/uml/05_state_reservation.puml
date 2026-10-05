@@ -1,0 +1,65 @@
+@startuml 05_state_reservation
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title State Diagram — Inventory Reservation
+hide empty description
+[*] -down-> AVAILABLE
+AVAILABLE -down-> RESERVED : reserve()\n[available >= qty]\n/ available-1, reserved+1
+RESERVED -down-> PAYMENT_PENDING : startPayment()\n[expires_at > now]
+RESERVED -down-> TIMEOUT : sweeper\n[expires_at passed]
+PAYMENT_PENDING -up-> RESERVED : PSP circuit open\n(customer may retry)
+PAYMENT_PENDING -down-> CONFIRMED : PaymentSucceeded\n/ reserved-1, sold+1
+PAYMENT_PENDING -right-> PAYMENT_FAILED : PaymentFailed
+CONFIRMED -down-> SOLD : OrderConfirmed
+PAYMENT_FAILED -down-> RELEASED : / reserved-1, available+1,\ngate token+1
+TIMEOUT -down-> RELEASED : / reserved-1, available+1,\ngate token+1
+SOLD -down-> [*]
+RELEASED -down-> [*]
+note left of PAYMENT_PENDING
+  The expiry sweeper NEVER expires
+  PAYMENT_PENDING: money may be moving.
+  The payment reconciler owns it.
+end note
+
+@enduml

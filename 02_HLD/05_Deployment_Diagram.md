@@ -2,6 +2,10 @@
 
 Single cloud region, three availability zones (AZ-a, AZ-b, AZ-c), managed Kubernetes.
 
+![Deployment diagram: Kubernetes across 3 availability zones](uml/05_deployment_diagram.svg)
+
+<sub>PlantUML source: [`uml/05_deployment_diagram.puml`](uml/05_deployment_diagram.puml) · [PNG](uml/05_deployment_diagram.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 flowchart TB
     INET([Internet]) --> CDN[Global CDN + WAF<br/>edge PoPs]

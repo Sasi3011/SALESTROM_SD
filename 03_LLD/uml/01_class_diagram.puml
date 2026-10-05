@@ -1,0 +1,238 @@
+@startuml 01_class_diagram
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title Class Diagram — Inventory, Payment and Order modules
+skinparam linetype ortho
+hide empty members
+
+package "inventory" {
+  interface ReservationStrategy <<Strategy>> {
+    +name : String
+    +reserve(repo : InventoryRepository, qty : int) : ReserveResult
+  }
+  class AtomicConditionalUpdate <<selected>>
+  class OptimisticVersioning {
+    -maxRetries : int
+  }
+  class PessimisticRowLock
+  class NaiveReadThenWrite <<baseline>>
+  class StrategyFactory <<Factory>> {
+    +create(name : String) : ReservationStrategy
+  }
+  class InventoryRepository <<Repository>> {
+    -row : Inventory
+    +read() : Inventory
+    +conditionalReserve(qty : int) : boolean
+    +compareAndSet(version : long, values) : boolean
+    +release(qty : int)
+    +commitSale(qty : int)
+  }
+  class AdmissionGate {
+    -tokens : int
+    +tryAcquire(qty : int) : boolean
+    +release(qty : int)
+  }
+  class IdempotencyStore {
+    -inflight : Map
+    -completed : Map
+    +execute(key, fn, isFinal) : Result
+  }
+  class ReservationService {
+    -ttlMs : long
+    +reserve(cmd : ReserveCommand) : ReservationResult
+    +startPayment(reservationId) : boolean
+    +resumeHold(reservationId)
+    +onPaymentSucceeded(e : PaymentSucceeded)
+    +onPaymentFailed(e : PaymentFailed)
+    +onOrderConfirmed(e : OrderConfirmed)
+    +expireStale()
+  }
+  class Reservation <<entity>> {
+    +id : UUID
+    +customerId : UUID
+    +idempotencyKey : String
+    +qty : int
+    +status : ReservationStatus
+    +expiresAt : Instant
+  }
+  enum ReservationStatus {
+    RESERVED
+    PAYMENT_PENDING
+    CONFIRMED
+    SOLD
+    PAYMENT_FAILED
+    TIMEOUT
+    RELEASED
+  }
+}
+
+package "payment" {
+  interface PaymentGateway <<Port>> {
+    +charge(req : ChargeRequest) : ChargeResult
+    +getStatus(idempotencyKey) : StatusResult
+  }
+  class CardPspAdapter <<Adapter>>
+  class UpiPspAdapter <<Adapter>>
+  class PaymentProviderFactory <<Factory>> {
+    +create(method : String) : PaymentGateway
+  }
+  class CircuitBreaker {
+    -state : CLOSED | OPEN | HALF_OPEN
+    -failureThreshold : int
+    -openMs : long
+    +call(fn) : T
+  }
+  class PaymentService {
+    -timeoutMs : long
+    +charge(cmd : ChargeCommand) : PaymentResult
+    +reconcile()
+  }
+  class Payment <<entity>> {
+    +id : UUID
+    +idempotencyKey : String
+    +reservationId : UUID
+    +status : PaymentStatus
+    +transactionId : String
+    +attempts : int
+  }
+  enum PaymentStatus {
+    INITIATED
+    SUCCEEDED
+    FAILED
+    UNKNOWN
+    REFUNDED
+  }
+}
+
+package "order" {
+  class OrderService {
+    +handle(topic, event)
+    +startProcessing(e : OrderConfirmed)
+  }
+  class OrderStateMachine <<State>> {
+    +ORDER_TRANSITIONS : Map
+    +transition(order, to)
+  }
+  class Order <<entity>> {
+    +id : UUID
+    +reservationId : UUID
+    +paymentId : UUID
+    +status : OrderStatus
+  }
+  enum OrderStatus {
+    CREATED
+    PAYMENT_PENDING
+    CONFIRMED
+    PROCESSING
+    SHIPPED
+    OUT_FOR_DELIVERY
+    DELIVERED
+    CANCELLED
+  }
+}
+
+package "checkout / gateway / core" {
+  class CheckoutFacade <<Facade>> {
+    +reserve(cmd)
+    +pay(cmd)
+  }
+  class ApiGateway {
+    +postReservation(req) : HttpResponse
+    +postPayment(req) : HttpResponse
+  }
+  class TokenBucket {
+    +tryTake() : boolean
+  }
+  class Outbox {
+    +append(topic, payload)
+    +relay()
+  }
+  class EventBus <<Observer>> {
+    +subscribe(group, topics, handler)
+    +publish(topic, payload)
+    +replayDlq()
+  }
+  class NotificationService <<Observer>> {
+    +handle(topic, event)
+  }
+}
+
+ReservationStrategy <|.. AtomicConditionalUpdate
+ReservationStrategy <|.. OptimisticVersioning
+ReservationStrategy <|.. PessimisticRowLock
+ReservationStrategy <|.. NaiveReadThenWrite
+StrategyFactory ..> ReservationStrategy : creates
+ReservationService --> ReservationStrategy
+ReservationService --> InventoryRepository
+ReservationService --> AdmissionGate
+ReservationService --> IdempotencyStore
+ReservationService "1" o-- "*" Reservation
+Reservation --> ReservationStatus
+
+PaymentGateway <|.. CardPspAdapter
+PaymentGateway <|.. UpiPspAdapter
+PaymentProviderFactory ..> PaymentGateway : creates
+PaymentService --> PaymentGateway
+PaymentService --> CircuitBreaker
+PaymentService "1" o-- "*" Payment
+Payment --> PaymentStatus
+
+OrderService --> OrderStateMachine
+OrderService "1" o-- "*" Order
+Order --> OrderStatus
+
+ApiGateway --> TokenBucket
+ApiGateway --> CheckoutFacade
+CheckoutFacade --> ReservationService
+CheckoutFacade --> PaymentService
+CheckoutFacade --> IdempotencyStore
+ReservationService --> Outbox
+PaymentService --> Outbox
+OrderService --> Outbox
+Outbox --> EventBus
+EventBus ..> ReservationService : delivers events
+EventBus ..> OrderService : delivers events
+EventBus ..> NotificationService : delivers events
+
+@enduml

@@ -2,6 +2,10 @@
 
 Each box is a separately deployable unit or data store. Arrows show protocol and mode.
 
+![Container diagram (C4 level 2)](uml/02_container_diagram.svg)
+
+<sub>PlantUML source: [`uml/02_container_diagram.puml`](uml/02_container_diagram.puml) · [PNG](uml/02_container_diagram.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 flowchart TB
     subgraph Client

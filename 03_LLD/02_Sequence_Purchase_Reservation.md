@@ -2,6 +2,10 @@
 
 Covers: successful reservation, duplicate request, inventory at zero, last-unit race.
 
+![Sequence diagram: purchase and reservation](uml/02_sequence_purchase_reservation.svg)
+
+<sub>PlantUML source: [`uml/02_sequence_purchase_reservation.puml`](uml/02_sequence_purchase_reservation.puml) · [PNG](uml/02_sequence_purchase_reservation.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 sequenceDiagram
     autonumber

@@ -1,0 +1,223 @@
+@startuml er_diagram
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontSize 12
+skinparam defaultFontColor #142033
+skinparam ArrowColor #4B5669
+skinparam ArrowFontColor #4B5669
+skinparam ArrowFontSize 11
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFF4E0
+skinparam NoteBorderColor #B26B00
+skinparam NoteFontColor #142033
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2B50D6
+skinparam ClassHeaderBackgroundColor #EAEFFF
+skinparam ClassAttributeIconSize 0
+skinparam StereotypeCBackgroundColor #EAEFFF
+skinparam InterfaceBackgroundColor #FFFFFF
+skinparam ParticipantBackgroundColor #EAEFFF
+skinparam ParticipantBorderColor #2B50D6
+skinparam ActorBackgroundColor #EAEFFF
+skinparam ActorBorderColor #2B50D6
+skinparam DatabaseBackgroundColor #F4F6F9
+skinparam DatabaseBorderColor #4B5669
+skinparam QueueBackgroundColor #FFF4E0
+skinparam QueueBorderColor #B26B00
+skinparam SequenceLifeLineBorderColor #CFD6E0
+skinparam SequenceGroupBorderColor #CFD6E0
+skinparam SequenceGroupHeaderFontColor #2B50D6
+skinparam SequenceBoxBorderColor #E1E6ED
+skinparam StateBackgroundColor #EAEFFF
+skinparam StateBorderColor #2B50D6
+skinparam ComponentBackgroundColor #FFFFFF
+skinparam ComponentBorderColor #2B50D6
+skinparam NodeBackgroundColor #F8F9FB
+skinparam NodeBorderColor #4B5669
+skinparam PackageBorderColor #CFD6E0
+skinparam UsecaseBackgroundColor #EAEFFF
+skinparam UsecaseBorderColor #2B50D6
+skinparam EntityBackgroundColor #FFFFFF
+skinparam EntityBorderColor #2B50D6
+
+title ER Diagram — SALESTORM (database per service)
+hide circle
+skinparam linetype ortho
+
+package "Catalog & sale DB" {
+  entity CATEGORY {
+    * category_id : UUID <<PK>>
+    --
+    name : VARCHAR
+    parent_id : UUID <<FK>>
+  }
+  entity PRODUCT {
+    * product_id : UUID <<PK>>
+    --
+    * category_id : UUID <<FK>>
+    * sku : VARCHAR <<UNIQUE>>
+    name : VARCHAR
+    list_price_minor : BIGINT
+  }
+  entity SALE {
+    * sale_id : UUID <<PK>>
+    --
+    starts_at, ends_at : TIMESTAMPTZ
+    per_customer_limit : INT
+    status : VARCHAR
+  }
+  entity DEAL {
+    * deal_id : UUID <<PK>>
+    --
+    * sale_id : UUID <<FK>>
+    * product_id : UUID <<FK>>
+    sale_price_minor : BIGINT
+    pricing_strategy : VARCHAR
+  }
+  entity COUPON {
+    * coupon_id : UUID <<PK>>
+    --
+    sale_id : UUID <<FK>>
+    * code : VARCHAR <<UNIQUE>>
+    discount_type, discount_value
+  }
+}
+
+package "Customer & cart DB" {
+  entity CUSTOMER {
+    * customer_id : UUID <<PK>>
+    --
+    * email : VARCHAR <<UNIQUE>>
+    phone : VARCHAR
+    status : VARCHAR
+  }
+  entity CART {
+    * cart_id : UUID <<PK>>
+    --
+    * customer_id : UUID <<FK>>
+    status : VARCHAR
+  }
+  entity CART_ITEM {
+    * cart_item_id : UUID <<PK>>
+    --
+    * cart_id : UUID <<FK>>
+    product_id : UUID
+    quantity : INT
+  }
+}
+
+package "Inventory DB" #EAEFFF {
+  entity INVENTORY {
+    * inventory_id : BIGINT <<PK>>
+    --
+    * sale_id, product_id <<UNIQUE>>
+    total_quantity : INT
+    available_quantity : INT  CHECK >= 0
+    reserved_quantity : INT  CHECK >= 0
+    sold_quantity : INT  CHECK >= 0
+    version : BIGINT
+    updated_at : TIMESTAMPTZ
+    .. CHECK available + reserved + sold = total ..
+  }
+  entity INVENTORY_RESERVATION {
+    * reservation_id : UUID <<PK>>
+    --
+    * inventory_id : BIGINT <<FK>>
+    customer_id : UUID
+    quantity : INT
+    status : VARCHAR
+    * idempotency_key : VARCHAR <<UNIQUE>>
+    expires_at : TIMESTAMPTZ
+    .. partial UNIQUE (inventory_id, customer_id)\nWHERE status is active ..
+  }
+  entity OUTBOX {
+    * event_id : UUID <<PK>>
+    --
+    aggregate_id : VARCHAR
+    event_type : VARCHAR
+    payload : JSONB
+    published_at : TIMESTAMPTZ
+  }
+}
+
+package "Payment DB" {
+  entity PAYMENT {
+    * payment_id : UUID <<PK>>
+    --
+    * reservation_id : UUID <<UNIQUE>>
+    * idempotency_key : VARCHAR <<UNIQUE>>
+    provider : VARCHAR
+    provider_txn_id : VARCHAR <<UNIQUE>>
+    amount_minor : BIGINT
+    status : VARCHAR
+    attempts : INT
+  }
+}
+
+package "Order DB" {
+  entity ORDERS {
+    * order_id : UUID <<PK>>
+    --
+    * reservation_id : UUID <<UNIQUE>>
+    customer_id : UUID
+    payment_id : UUID
+    status : VARCHAR
+    total_minor : BIGINT
+  }
+  entity ORDER_ITEM {
+    * order_item_id : UUID <<PK>>
+    --
+    * order_id : UUID <<FK>>
+    product_id : UUID
+    quantity : INT
+    unit_price_minor : BIGINT
+  }
+  entity ORDER_STATUS_HISTORY {
+    * id : BIGINT <<PK>>
+    --
+    * order_id : UUID <<FK>>
+    from_status, to_status
+    changed_at, trace_id
+  }
+  entity SHIPMENT {
+    * shipment_id : UUID <<PK>>
+    --
+    * order_id : UUID <<UNIQUE>>
+    courier : VARCHAR
+    tracking_number : VARCHAR
+    status : VARCHAR
+  }
+}
+
+package "Notification DB" {
+  entity NOTIFICATION {
+    * notification_id : UUID <<PK>>
+    --
+    customer_id : UUID
+    event_type, channel, status
+    * dedup_key : VARCHAR <<UNIQUE>>
+  }
+}
+
+CATEGORY ||--o{ PRODUCT
+CATEGORY |o--o{ CATEGORY
+SALE ||--o{ DEAL
+PRODUCT ||--o{ DEAL
+SALE |o--o{ COUPON
+CUSTOMER ||--o{ CART
+CART ||--o{ CART_ITEM
+INVENTORY ||--o{ INVENTORY_RESERVATION
+ORDERS ||--|{ ORDER_ITEM
+ORDERS ||--o{ ORDER_STATUS_HISTORY
+
+INVENTORY_RESERVATION ||..o| PAYMENT : logical ref\n(reservation_id)
+INVENTORY_RESERVATION ||..o| ORDERS : logical ref\n(reservation_id)
+ORDERS ||..o| SHIPMENT : logical ref
+SALE ||..o{ INVENTORY : logical ref
+PRODUCT ||..o{ INVENTORY : logical ref
+CUSTOMER ||..o{ ORDERS : logical ref
+CUSTOMER ||..o{ NOTIFICATION : logical ref
+
+@enduml

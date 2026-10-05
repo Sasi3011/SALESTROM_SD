@@ -2,6 +2,10 @@
 
 PostgreSQL 16, **database per service**. Tables are grouped by owning service; foreign keys are enforced **inside** a service's database only. Cross-service references (for example `orders.payment_id`) are logical IDs, kept consistent by events and reconciliation. Full DDL: `schema.sql`.
 
+![ER diagram: per-service databases](uml/er_diagram.svg)
+
+<sub>PlantUML source: [`uml/er_diagram.puml`](uml/er_diagram.puml) · [PNG](uml/er_diagram.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 erDiagram
     CUSTOMER ||--o{ CART : owns

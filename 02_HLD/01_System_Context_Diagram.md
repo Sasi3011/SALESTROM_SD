@@ -2,6 +2,10 @@
 
 SALESTORM is one system. Everything around it is a person or an external system it depends on.
 
+![System context diagram (C4 level 1)](uml/01_system_context.svg)
+
+<sub>PlantUML source: [`uml/01_system_context.puml`](uml/01_system_context.puml) · [PNG](uml/01_system_context.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 flowchart LR
     C([Customer<br/>web / mobile app])

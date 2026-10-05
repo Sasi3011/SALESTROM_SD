@@ -2,6 +2,10 @@
 
 ## Inventory & reservation service
 
+![Inventory and reservation service components](uml/03_component_inventory.svg)
+
+<sub>PlantUML source: [`uml/03_component_inventory.puml`](uml/03_component_inventory.puml) · [PNG](uml/03_component_inventory.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
+
 ```mermaid
 flowchart LR
     API[ReservationController<br/>REST/gRPC adapter] --> VAL[RequestValidator]
@@ -33,6 +37,10 @@ flowchart LR
 | PaymentEventConsumer | Confirms or releases on PaymentSucceeded / PaymentFailed. |
 
 ## Payment service
+
+![Payment and order service components](uml/04_component_payment_order.svg)
+
+<sub>PlantUML source: [`uml/04_component_payment_order.puml`](uml/04_component_payment_order.puml) · [PNG](uml/04_component_payment_order.png). The Mermaid version below shows the same diagram as text and renders inline.</sub>
 
 ```mermaid
 flowchart LR
