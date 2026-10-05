@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Play } from 'lucide-react';
+import { Play, FlaskConical, ChartColumn, Database, ListChecks } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Cell } from 'recharts';
 import { api, fmt } from '../api.js';
 
@@ -34,7 +34,7 @@ export default function Lab() {
   return (
     <div className="stack">
       <section className="panel">
-        <div className="panel-head"><h2>Which concurrency control protects the last unit?</h2></div>
+        <div className="panel-head"><h2><span className="ph-ico"><FlaskConical size={14} /></span>Which concurrency control protects the last unit?</h2></div>
         <div className="panel-body lab-head">
           <p className="muted" style={{ margin: 0, flex: '1 1 320px', maxWidth: '70ch' }}>
             Every customer fires at one inventory row at the same moment, with no gate in front unless stated. The same row, the same load, four approaches.
@@ -54,7 +54,7 @@ export default function Lab() {
         <>
           <div className="row-2">
             <section className="panel">
-              <div className="panel-head"><h2>Successful reservations</h2><p>Dashed line is the real stock</p></div>
+              <div className="panel-head"><h2><span className="ph-ico"><ChartColumn size={14} /></span>Successful reservations</h2><p>Dashed line is the real stock</p></div>
               <div className="panel-body" style={{ height: 260 }}>
                 <ResponsiveContainer>
                   <BarChart data={results} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -69,7 +69,7 @@ export default function Lab() {
               </div>
             </section>
             <section className="panel">
-              <div className="panel-head"><h2>Database calls</h2><p>Load placed on the inventory row (log scale)</p></div>
+              <div className="panel-head"><h2><span className="ph-ico"><Database size={14} /></span>Database calls</h2><p>Load placed on the inventory row (log scale)</p></div>
               <div className="panel-body" style={{ height: 260 }}>
                 <ResponsiveContainer>
                   <BarChart data={results} margin={{ top: 10, right: 10, left: -4, bottom: 0 }}>
@@ -84,7 +84,7 @@ export default function Lab() {
             </section>
           </div>
           <section className="panel">
-            <div className="panel-head"><h2>Results</h2><p>{fmt(users)} customers, {fmt(stock)} units</p></div>
+            <div className="panel-head"><h2><span className="ph-ico"><ListChecks size={14} /></span>Results</h2><p>{fmt(users)} customers, {fmt(stock)} units</p></div>
             <div className="panel-body table-wrap">
               <table>
                 <thead><tr><th>Approach</th><th className="r">Reserved</th><th className="r">Oversold</th><th className="r">Version conflicts</th><th className="r">Gave up</th><th className="r">DB calls</th><th className="r">p50</th><th className="r">p99</th><th>Verdict</th></tr></thead>

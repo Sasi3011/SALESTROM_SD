@@ -1,4 +1,5 @@
-import { Play, RotateCcw } from 'lucide-react';
+import { Play, RotateCcw, SlidersHorizontal, Users, Zap } from 'lucide-react';
+import { podIds } from './LoadBalancerPanel.jsx';
 
 const STRATEGIES = [
   { id: 'atomic', label: 'Atomic update (selected)' },
@@ -29,7 +30,7 @@ export default function ControlPanel({ config, setConfig, defaults, running, onS
 
   return (
     <aside className="panel controls" aria-label="Scenario settings">
-      <div className="panel-head"><h2>Scenario</h2><span className="aside">10× time compression</span></div>
+      <div className="panel-head"><h2><span className="ph-ico"><SlidersHorizontal size={14} /></span>Scenario</h2><span className="aside">10× time compression</span></div>
       <div className="panel-body">
         <div className="pair">
           <div className="field"><label htmlFor="users">Customers</label>
@@ -47,15 +48,16 @@ export default function ControlPanel({ config, setConfig, defaults, running, onS
         {!config.gateEnabled && <p className="hint">With the gate off, every request reaches the database.</p>}
 
         <div className="group">
-          <p className="group-title">Customer behaviour</p>
+          <p className="group-title"><Users size={14} />Customer behaviour</p>
           <Range label="Payment success" value={config.paymentSuccessPct} onChange={(v) => set('paymentSuccessPct', v)} />
           <Range label="Duplicate clicks" value={config.duplicatePct} max={30} onChange={(v) => set('duplicatePct', v)} />
           <Range label="Abandon after reserving" value={config.abandonPct} max={50} onChange={(v) => set('abandonPct', v)} />
           <Range label="Gateway responses lost" value={config.lostResponsePct} max={30} onChange={(v) => set('lostResponsePct', v)} />
+          <Range label="Bot traffic" value={config.botPct} max={20} onChange={(v) => set('botPct', v)} />
         </div>
 
         <div className="group">
-          <p className="group-title">Failure injection</p>
+          <p className="group-title"><Zap size={14} />Failure injection</p>
           <Toggle label="Order Service outage" checked={config.orderOutage.enabled} onChange={(v) => setNested('orderOutage', 'enabled', v)} />
           {config.orderOutage.enabled && (
             <div className="pair">
@@ -73,6 +75,23 @@ export default function ControlPanel({ config, setConfig, defaults, running, onS
               <div className="field"><label htmlFor="gd">Lasts (ms)</label>
                 <input id="gd" className="input num" type="number" min="100" value={config.gatewayOutage.durationMs} onChange={(e) => setNested('gatewayOutage', 'durationMs', Number(e.target.value))} /></div>
             </div>
+          )}
+          <Toggle label="Gateway pod failure" checked={config.podFailure.enabled} onChange={(v) => setNested('podFailure', 'enabled', v)} />
+          {config.podFailure.enabled && (
+            <>
+              <div className="pair">
+                <div className="field"><label htmlFor="ps">Starts at (ms)</label>
+                  <input id="ps" className="input num" type="number" min="0" value={config.podFailure.startMs} onChange={(e) => setNested('podFailure', 'startMs', Number(e.target.value))} /></div>
+                <div className="field"><label htmlFor="pd">Lasts (ms)</label>
+                  <input id="pd" className="input num" type="number" min="100" value={config.podFailure.durationMs} onChange={(e) => setNested('podFailure', 'durationMs', Number(e.target.value))} /></div>
+              </div>
+              <div className="field">
+                <label htmlFor="pp">Pod</label>
+                <select id="pp" className="select" value={config.podFailure.podId} onChange={(e) => setNested('podFailure', 'podId', e.target.value)}>
+                  {podIds(config.lb?.podsPerZone).map((id) => <option key={id} value={id}>{id}</option>)}
+                </select>
+              </div>
+            </>
           )}
         </div>
 

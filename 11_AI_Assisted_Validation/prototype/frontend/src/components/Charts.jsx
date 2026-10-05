@@ -1,3 +1,4 @@
+import { ChartArea, ChartColumn } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ComposedChart, Bar, Line } from 'recharts';
 
 const axis = { fontSize: 11, fill: '#7b8597' };
@@ -6,7 +7,7 @@ const tip = { contentStyle: { borderRadius: 6, border: '1px solid #e1e6ed', font
 export function InventoryChart({ timeline }) {
   return (
     <section className="panel" aria-label="Inventory over time">
-      <div className="panel-head"><h2>Inventory over time</h2><p>Stock only moves between states, never disappears</p></div>
+      <div className="panel-head"><h2><span className="ph-ico"><ChartArea size={14} /></span>Inventory over time</h2><p>Stock only moves between states, never disappears</p></div>
       <div className="panel-body" style={{ height: 250 }}>
         <ResponsiveContainer>
           <AreaChart data={timeline} margin={{ top: 6, right: 6, left: -18, bottom: 0 }}>
@@ -28,7 +29,7 @@ export function InventoryChart({ timeline }) {
 export function LoadChart({ timeline }) {
   return (
     <section className="panel" aria-label="Traffic and order queue">
-      <div className="panel-head"><h2>Traffic and order queue</h2><p>Requests per second and events waiting for orders</p></div>
+      <div className="panel-head"><h2><span className="ph-ico"><ChartColumn size={14} /></span>Traffic and order queue</h2><p>Requests per second and events waiting for orders</p></div>
       <div className="panel-body" style={{ height: 250 }}>
         <ResponsiveContainer>
           <ComposedChart data={timeline} margin={{ top: 6, right: 0, left: -12, bottom: 0 }}>

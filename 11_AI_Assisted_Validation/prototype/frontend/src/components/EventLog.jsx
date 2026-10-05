@@ -1,3 +1,4 @@
+import { ScrollText } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 
 export default function EventLog({ log, onOpenTrace }) {
@@ -5,7 +6,7 @@ export default function EventLog({ log, onOpenTrace }) {
   useEffect(() => { const el = ref.current; if (el) el.scrollTop = el.scrollHeight; }, [log]);
   return (
     <section className="panel" aria-label="Live event log">
-      <div className="panel-head"><h2>Live event log</h2><p>Select a customer to open the full trace</p></div>
+      <div className="panel-head"><h2><span className="ph-ico"><ScrollText size={14} /></span>Live event log</h2><p>Select a customer to open the full trace</p></div>
       <div className="log" ref={ref} style={{ marginTop: 10 }}>
         {!log?.length && <div className="empty">Events appear here once the sale opens.</div>}
         {log?.map((e, i) => (

@@ -6,7 +6,8 @@ export const DEFAULT_CONFIG = {
   arrivalWindowMs: 4000,         // when customers click "Buy now" (front-loaded burst)
   strategy: 'atomic',            // naive | pessimistic | optimistic | atomic
   gateEnabled: true,             // Redis admission gate in front of the DB
-  duplicatePct: 2,               // customers who double-click Buy and Pay (same Idempotency-Key)
+  botPct: 1,                     // clients scored as bots by the CDN / WAF and blocked with 403
+  duplicatePct: 2,             // customers who double-click Buy and Pay (same Idempotency-Key)
   paymentSuccessPct: 95,
   lostResponsePct: 3,            // PSP charged but the response never arrived (timeout)
   abandonPct: 3,                 // reserved but never paid -> TTL expiry
@@ -15,8 +16,10 @@ export const DEFAULT_CONFIG = {
   paymentMethod: 'card',
   rateLimit: { capacity: 2500, refillPerSec: 3000 },
   dbLatency: { min: 1, max: 4 },
+  lb: { podsPerZone: 2 },        // API gateway pods per availability zone (3 zones)
   orderOutage: { enabled: true, startMs: 400, durationMs: 3000 },     // "Order Service down for 30 s"
   gatewayOutage: { enabled: false, startMs: 2500, durationMs: 1500 },   // optional extra scenario
+  podFailure: { enabled: false, startMs: 600, durationMs: 2000, podId: 'gw-a1' },   // one gateway pod dies
 };
 
 export function mergeConfig(input = {}) {
@@ -27,5 +30,7 @@ export function mergeConfig(input = {}) {
   }
   c.users = Math.min(Math.max(1, Number(c.users)), 50000);
   c.stock = Math.min(Math.max(1, Number(c.stock)), 1000);
+  c.botPct = Math.min(Math.max(0, Number(c.botPct) || 0), 100);
+  c.lb.podsPerZone = Math.min(Math.max(1, Number(c.lb.podsPerZone) || 1), 4);
   return c;
 }

@@ -16,6 +16,20 @@
 
 **Measured in the prototype (default brief scenario):** 10,000 customers produced ~11,500 HTTP requests (retries + duplicates). ~1,100–1,500 were throttled with 429 and retried; ~9,900 sold-out answers came from the gate; only **~108 requests reached the inventory database**; exactly 100 units sold; every invariant held. Without the gate and with the atomic strategy, the database takes one call per request (2,000 calls for 2,000 users in the lab) and is still correct.
 
+**Traffic entry and distribution (prototype, gateway pod failure run):** the prototype models steps 1 and 3. Every customer passes the CDN / WAF once; about 1 % are scored as bots and refused with `403` before they reach the origin. The load balancer spreads the rest across 6 gateway pods (2 per AZ) using least-request routing, with ties broken round-robin. In the run below, pod `gw-a1` was marked unhealthy from 600 ms to 2,600 ms, during the peak of the burst. The health check removed it from rotation, the other five pods took its share, and when it recovered it rejoined.
+
+| Pod | Zone | Requests handled (whole run) | Requests while `gw-a1` was down |
+|---|---|---|---|
+| gw-a1 | AZ-a | 830 | **0** |
+| gw-a2 | AZ-a | 1,873 | 1,138 |
+| gw-b1 | AZ-b | 1,555 | 742 |
+| gw-b2 | AZ-b | 1,732 | 918 |
+| gw-c1 | AZ-c | 2,543 | 980 |
+| gw-c2 | AZ-c | 2,268 | 819 |
+| **Total** | | **10,801** | **4,597** (4,312 customers tagged *rerouted*) |
+
+Edge: 10,000 customers inspected, 115 blocked as bots. Sold 100 / 100. **0 requests went to an unhealthy pod, and all 8 invariants held.** Least-request routing is not perfectly even. While about 100 reservations wait on the hot inventory row, the pods holding one fewer in-flight request take all the fast sold-out traffic. In this run that made AZ-c the busiest zone, but no pod went above 1.5× the average. If a flatter spread is needed, power-of-two-choices sampling (Envoy's `LEAST_REQUEST` default) removes this effect.
+
 ## 2. Horizontal scaling and state
 
 | Tier | Stateless? | Scaling approach |

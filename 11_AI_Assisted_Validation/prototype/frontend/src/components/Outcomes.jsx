@@ -1,3 +1,4 @@
+import { Users } from 'lucide-react';
 import { fmt } from '../api.js';
 
 const ROWS = [
@@ -6,6 +7,7 @@ const ROWS = [
   ['PAYMENT_FAILED', 'Payment declined', 'var(--bad)'],
   ['EXPIRED', 'Reservation expired', 'var(--u-reserved)'],
   ['RATE_LIMITED', 'Rate limited', 'var(--warn)'],
+  ['BLOCKED_BOT', 'Blocked as bot', 'var(--ink-3)'],
   ['CONTENTION', 'Gave up (conflicts)', 'var(--warn)'],
   ['RESERVED', 'Still in checkout', 'var(--u-paying)'],
 ];
@@ -15,7 +17,7 @@ export default function Outcomes({ outcomes, total }) {
   const max = Math.max(1, total || 0);
   return (
     <section className="panel" aria-label="Customer outcomes">
-      <div className="panel-head"><h2>Customer outcomes</h2><p>Every customer gets a definite answer</p></div>
+      <div className="panel-head"><h2><span className="ph-ico"><Users size={14} /></span>Customer outcomes</h2><p>Every customer gets a definite answer</p></div>
       <div className="panel-body bars">
         {ROWS.filter(([k]) => k === 'PURCHASED' || k === 'SOLD_OUT' || o[k]).map(([k, label, color]) => (
           <div className="bar-row" key={k}>

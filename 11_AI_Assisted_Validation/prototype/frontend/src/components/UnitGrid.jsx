@@ -1,3 +1,4 @@
+import { Boxes } from 'lucide-react';
 import { fmt } from '../api.js';
 
 const LEGEND = [
@@ -22,7 +23,7 @@ export default function UnitGrid({ snapshot, stock }) {
   return (
     <section className="panel" aria-label="Unit inventory">
       <div className="panel-head">
-        <h2>Product X inventory</h2>
+        <h2><span className="ph-ico"><Boxes size={14} /></span>Product X inventory</h2>
         <p>Each square is one physical unit</p>
         <span className="aside"><span className={`phase ${phase}`}><span className="pulse" />{phaseLabel}{snapshot ? ` at ${fmt(snapshot.t)} ms` : ''}</span></span>
       </div>

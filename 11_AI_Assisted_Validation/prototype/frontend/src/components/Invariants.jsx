@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, CircleDashed } from 'lucide-react';
+import { CheckCircle2, XCircle, CircleDashed, ShieldCheck } from 'lucide-react';
 
 export default function Invariants({ items, phase }) {
   const list = items ?? [];
@@ -11,7 +11,7 @@ export default function Invariants({ items, phase }) {
         : phase === 'done' ? 'All guarantees held' : 'All guarantees holding';
   return (
     <section className="panel" aria-label="Correctness guarantees">
-      <div className="panel-head"><h2>Correctness guarantees</h2><p>Checked continuously</p></div>
+      <div className="panel-head"><h2><span className="ph-ico"><ShieldCheck size={14} /></span>Correctness guarantees</h2><p>Checked continuously</p></div>
       <div className="panel-body">
         <ul className="inv">
           {list.map((i) => (

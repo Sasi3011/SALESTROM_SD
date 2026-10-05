@@ -4,6 +4,7 @@ import ControlPanel from './ControlPanel.jsx';
 import UnitGrid from './UnitGrid.jsx';
 import Invariants from './Invariants.jsx';
 import Pipeline from './Pipeline.jsx';
+import LoadBalancerPanel from './LoadBalancerPanel.jsx';
 import { InventoryChart, LoadChart } from './Charts.jsx';
 import Outcomes from './Outcomes.jsx';
 import EventLog from './EventLog.jsx';
@@ -32,6 +33,7 @@ export default function LiveSale({ snapshot, defaults, doneCount, onOpenTrace })
           <Invariants items={snapshot?.invariants} phase={snapshot?.phase} />
         </div>
         <Pipeline snapshot={snapshot} config={config} />
+        <LoadBalancerPanel lb={snapshot?.lb} config={snapshot?.config ?? config} />
         <div className="row-2">
           <InventoryChart timeline={snapshot?.timeline ?? []} />
           <LoadChart timeline={snapshot?.timeline ?? []} />

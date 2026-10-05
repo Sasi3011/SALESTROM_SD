@@ -19,6 +19,7 @@ export function checkInvariants(sys, { final = false } = {}) {
     { id: 'non-negative', label: 'Stock never went negative', detail: `lowest available seen: ${inv.minAvailable}, reserved now: ${inv.reserved}`, status: inv.minAvailable >= 0 && inv.reserved >= 0 ? 'pass' : 'fail' },
     { id: 'one-reservation-per-key', label: 'One reservation per idempotency key', detail: `${dupReservations} keys with duplicates`, status: dupReservations === 0 ? 'pass' : 'fail' },
     { id: 'no-double-charge', label: 'Each payment key charged at most once', detail: `${doubleCharges} double charges, ${sys.gateway.dedupHits} PSP de-duplications`, status: doubleCharges === 0 ? 'pass' : 'fail' },
+    { id: 'healthy-routing', label: 'Traffic only routed to healthy pods', detail: `${sys.lb.routedToUnhealthy} requests sent to an unhealthy pod`, status: sys.lb.routedToUnhealthy === 0 ? 'pass' : 'fail' },
     { id: 'paid-means-ordered', label: 'Every captured payment has a confirmed order', detail: `${succeededPayments.length} captured, ${confirmedOrders.length} confirmed orders`, status: pending(succeededPayments.length === confirmedOrders.length) },
     { id: 'no-stuck-reservations', label: 'No reservation left hanging', detail: `${stuck} still active`, status: pending(stuck === 0) },
   ];

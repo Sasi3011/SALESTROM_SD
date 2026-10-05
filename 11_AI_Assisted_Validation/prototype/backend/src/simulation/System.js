@@ -18,6 +18,8 @@ import { NotificationService } from '../notification/NotificationService.js';
 import { CheckoutFacade } from '../checkout/CheckoutFacade.js';
 import { TokenBucket } from '../gateway/RateLimiter.js';
 import { ApiGateway } from '../gateway/ApiGateway.js';
+import { EdgeFirewall } from '../gateway/EdgeFirewall.js';
+import { LoadBalancer } from '../gateway/LoadBalancer.js';
 
 export function createSystem(config, { onLog } = {}) {
   const clock = new Clock();
@@ -59,6 +61,10 @@ export function createSystem(config, { onLog } = {}) {
   const checkout = new CheckoutFacade({ reservations, payments, idempotency, outbox, tracer, clock });
   const api = new ApiGateway({ checkout, limiter: new TokenBucket(config.rateLimit), metrics, tracer });
 
+  // Traffic entry: CDN / WAF at the edge, then a load balancer spreading requests across gateway pods.
+  const edge = new EdgeFirewall({ botPct: config.botPct, tracer });
+  const lb = new LoadBalancer({ podsPerZone: config.lb.podsPerZone, clock, tracer });
+
   // Background reconciler: resolves UNKNOWN payments, replays DLQ once consumers are healthy.
   const reconciler = setInterval(() => {
     payments.reconcile();
@@ -67,5 +73,5 @@ export function createSystem(config, { onLog } = {}) {
 
   const stop = () => { clearInterval(reconciler); reservations.stop(); outbox.stop(); bus.stopped = true; };
 
-  return { config, clock, flags, tracer, metrics, bus, outbox, idempotency, repo, gate, reservations, gateway, breaker, payments, orders, notifications, checkout, api, stop };
+  return { config, clock, flags, tracer, metrics, bus, outbox, idempotency, repo, gate, reservations, gateway, breaker, payments, orders, notifications, checkout, api, edge, lb, stop };
 }

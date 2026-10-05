@@ -1,5 +1,5 @@
 // Runs the brief's practical test case: N customers hit "Buy now" for S units at the same time.
-// Each customer is an async journey through the real API gateway -> checkout -> services.
+// Each customer is an async journey through CDN / WAF -> load balancer -> API gateway -> checkout -> services.
 import { createSystem } from './System.js';
 import { checkInvariants } from './InvariantChecker.js';
 import { sleep, rand, chance, percentile } from '../core/util.js';
@@ -29,6 +29,7 @@ export class LoadSimulator {
     sys.tracer.span('system', 'Simulator', `sale opened: ${c.users.toLocaleString()} customers, ${c.stock} units, strategy=${c.strategy}, gate=${c.gateEnabled ? 'on' : 'off'}`);
     this.#scheduleOutage('orderDown', c.orderOutage, 'Order Service');
     this.#scheduleOutage('gatewayDown', c.gatewayOutage, 'Payment gateway');
+    this.#schedulePodFailure(c.podFailure);
     this.ticker = setInterval(() => this.#tick(), 200);
 
     const journeys = [];
@@ -67,6 +68,14 @@ export class LoadSimulator {
     }, o.startMs);
   }
 
+  #schedulePodFailure(o) {
+    if (!o?.enabled) return;
+    setTimeout(() => {
+      this.system.lb.setHealthy(o.podId, false);
+      setTimeout(() => this.system.lb.setHealthy(o.podId, true), o.durationMs);
+    }, o.startMs);
+  }
+
   async #customer(i) {
     const { system: sys, config: c } = this;
     const id = `C${String(i).padStart(5, '0')}`;
@@ -78,14 +87,17 @@ export class LoadSimulator {
 
     await sleep(c.arrivalWindowMs * Math.random() ** 2.4);   // front-loaded burst
     sys.tracer.span(id, 'Customer', 'clicked Buy now', 'debug');
+    if (!sys.edge.inspect({ customerId: id, traceId: id }).allowed) {   // CDN / WAF, once per customer
+      sys.tracer.tag(id, 'BOT'); sys.tracer.outcome(id, 'BLOCKED_BOT'); return;
+    }
 
     const reserveReq = { token, customerId: id, idempotencyKey: `idem-buy-${id}`, productId: 'PRODUCT_X', qty: 1, traceId: id };
     let res;
     for (let attempt = 0; attempt < 4; attempt++) {
-      const calls = [sys.api.postReservation(reserveReq)];
+      const calls = [sys.lb.route(() => sys.api.postReservation(reserveReq), id)];
       if (dup && attempt === 0) calls.push(sleep(rand(3, 30)).then(() => {
         sys.tracer.span(id, 'Customer', 'double-clicked Buy now (same Idempotency-Key)', 'info');
-        return sys.api.postReservation(reserveReq);
+        return sys.lb.route(() => sys.api.postReservation(reserveReq), id);
       }));
       const results = await Promise.all(calls);
       res = results[0];
@@ -100,6 +112,7 @@ export class LoadSimulator {
 
     const st = res.body.status;
     if (res.status === 429) { sys.tracer.outcome(id, 'RATE_LIMITED'); return; }
+    if (res.body.error === 'NO_HEALTHY_UPSTREAM') { sys.tracer.outcome(id, 'NO_UPSTREAM'); return; }
     if (st === 'SOLD_OUT') { sys.tracer.outcome(id, 'SOLD_OUT'); return; }
     if (st === 'CONTENTION') { sys.tracer.outcome(id, 'CONTENTION'); return; }
     if (st !== 'RESERVED') { sys.tracer.outcome(id, st); return; }
@@ -111,10 +124,10 @@ export class LoadSimulator {
     await sleep(rand(150, 700));     // customer enters payment details
     const payReq = { token, customerId: id, reservationId, idempotencyKey: `idem-pay-${id}`, traceId: id };
     for (let attempt = 0; attempt < 6; attempt++) {
-      const calls = [sys.api.postPayment(payReq)];
+      const calls = [sys.lb.route(() => sys.api.postPayment(payReq), id)];
       if (dup && attempt === 0) calls.push(sleep(rand(3, 30)).then(() => {
         sys.tracer.span(id, 'Customer', 'double-clicked Pay (same Idempotency-Key)');
-        return sys.api.postPayment(payReq);
+        return sys.lb.route(() => sys.api.postPayment(payReq), id);
       }));
       const results = await Promise.all(calls);
       const p = results[0];
@@ -150,6 +163,8 @@ export class LoadSimulator {
       flags: { ...s.flags }, breaker: s.breaker.state, backlog: s.bus.backlog(), outboxPending: s.outbox.pending(),
       pipeline: {
         customers: this.config.users,
+        edgeReceived: s.edge.received,
+        botsBlocked: s.edge.blocked,
         httpRequests: m.get('http.requests'),
         rateLimited: m.get('http.429'),
         gateRejected: m.get('reserve.rejected_at_gate'),
@@ -174,6 +189,7 @@ export class LoadSimulator {
         pspDedup: s.gateway.dedupHits,
         dbCalls: inv.dbCalls,
       },
+      lb: s.lb.stats(),
       outcomes: trace.outcomes, tags: trace.tags,
       invariants: checkInvariants(s, { final }),
       timeline: this.timeline,
