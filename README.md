@@ -39,9 +39,15 @@
 | 19 | AI-assisted prototype / simulation evidence | `11_AI_Assisted_Validation/prototype/`, `11_AI_Assisted_Validation/Validation_Report.md` |
 | 20 | AI usage note / prompt summary | `11_AI_Assisted_Validation/AI_Usage_Note.md` |
 | 21 | Final presentation (slides + script + jury prep) | `12_Presentation/SALESTORM_NullPointer_Pitch.pptx` (+ `.pdf`), `12_Presentation/Pitch_Script_and_Jury_Prep.md` |
-| — | UML diagram index (PlantUML `.puml` / `.svg` / `.png`) | `UML_Diagrams.md`, `*/uml/` |
+| — | PlantUML diagrams (`.puml` / `.svg` / `.png`) | `01_Requirements/uml/`, `02_HLD/uml/`, `03_LLD/uml/`, `04_Database/uml/` |
 
-Every diagram comes in two forms. The **PlantUML** version (`.puml` source plus rendered `.svg` and `.png`) sits in the `uml/` folder next to the document that uses it, and is embedded at the top of that document. The full list is in [`UML_Diagrams.md`](UML_Diagrams.md). The **Mermaid** version is inline in each document and renders directly on GitHub/GitLab, in VS Code (Markdown Preview Mermaid Support) and at mermaid.live.
+Every diagram comes in two forms. The **PlantUML** version (`.puml` source plus rendered `.svg` and `.png`) sits in the `uml/` folder next to the document that uses it, and is embedded at the top of that document. The **Mermaid** version is inline in each document and renders directly on GitHub/GitLab, in VS Code (Markdown Preview Mermaid Support) and at mermaid.live.
+
+To edit and re-render a PlantUML diagram:
+
+* **VS Code:** install the "PlantUML" extension (jebbs), open a `.puml`, press `Alt+D` to preview, right-click → Export.
+* **Online:** paste the source into https://www.plantuml.com/plantuml.
+* **Command line:** `java -jar plantuml.jar -tpng -tsvg */uml/*.puml` (Graphviz is needed for the class, component, state, use-case and ER diagrams; the two C4 diagrams use PlantUML's built-in C4 library).
 
 ## Run the prototype (≈ 2 minutes)
 
