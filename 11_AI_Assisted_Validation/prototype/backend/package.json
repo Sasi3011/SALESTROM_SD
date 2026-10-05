@@ -1,0 +1,16 @@
+{
+  "name": "salestorm-backend",
+  "version": "1.0.0",
+  "description": "SALESTORM flash-sale design validation engine (simulates services, DB, cache, event bus)",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}
